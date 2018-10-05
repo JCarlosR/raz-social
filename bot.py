@@ -184,7 +184,7 @@ def usaApostrofeInvalido(terms):
 # D.H.B. 	(Correcto)
 # R B C 	(Incorrecto)   -> 1 term de 1 car
 # RBC 		(Correcto)
-# D Y H (Correcto) -> la Y es una excepción a la regla
+# D Y H     (Correcto) -> la Y es una excepción a la regla
 def presentaInicialesIncorrectas(terms):
 	for term in terms:
 		if len(term) == 2 and term[1] == '.' or len(term) == 1 and term.isalpha() and term != 'Y':
@@ -204,13 +204,13 @@ def presentaComasIncorrectasOTildes(terms):
 	return False
 
 def presentaTildes(term):
-	# tildes = ['Á', 'É', 'Í', 'Ó', 'Ú', 'á', 'é', 'í', 'ó', 'ú']
-	tildes = [181, 144, 214, 224, 233, 160, 130, 161, 162, 163]
+	tildes = ['Á', 'É', 'Í', 'Ó', 'Ú', 'á', 'é', 'í', 'ó', 'ú']
+	# tildes = [181, 144, 214, 224, 233, 160, 130, 161, 162, 163]
 	iEspecial = tildes[2]
 	# print "Valor de Í => %d - %d" % (ord(iEspecial[0]), ord(iEspecial[1]))
 	for char in term:
 		# print "El caracter %s (%d) se encuentra en tildes? => %r" % (char, ord(char), char in tildes)
-		if ord(char) in tildes:
+		if char in tildes:
 			return True
 
 	return False
