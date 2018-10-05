@@ -1,140 +1,137 @@
-# -*- coding: utf-8 -*-
+# encoding: utf-8
 
-def main():
-	message = 'Bienvenido'
-	print(message)
+import sys  
+reload(sys)  
+sys.setdefaultencoding('utf8')
 
-	raz_social = raw_input('Ingrese razon social: ')
+import webapp2
+import json
+import logging
+from google.appengine.api import urlfetch
+from bot import Bot
+# from user_events import UserEventsDao
 
-	# términos del texto ingresado
-	terms = raz_social.split()
+VERIFY_TOKEN = "facebook_verification_token"
+ACCESS_TOKEN = "EAAE04pfDjhEBAEuN707BRATYRzwZAU4xxmhncIvQWlX2Eapro2xLzZCTiik95ThmIY02UUTA89aa4cUD66yMuTPm4I3v6abZBKsQIM0DaVnXxdkaQ9tq0fZAEWuSYuZBLAILf1YvdPnZBHVf0y07GRaZCPEbtc3Pe86EWXedFe4bMNYTslLdBkmhCNtv9kRJkgZD"
 
-	errors = []
+class MainPage(webapp2.RequestHandler):
+    def __init__(self, request=None, response=None):
+        super(MainPage, self).__init__(request, response)
+        logging.info("Instanciando bot")
+        # self.bot = Bot(send_message, UserEventsDao())
+        self.bot = Bot(send_message)
 
-	if faltanEspaciosAlCostadoDeEspeciales(terms):
-		errors.append('Los caracteres "&", "+" y "$" deben emplearse considerando un espacio entre cada signo.')
+    def get(self):
+        self.response.headers['Content-Type'] = 'text/plain'
+        mode = self.request.get("hub.mode")
+        if mode == "subscribe":
+            challenge = self.request.get("hub.challenge")
+            verify_token = self.request.get("hub.verify_token")
+            if verify_token == VERIFY_TOKEN:
+                self.response.write(challenge)
+        else:
+            self.response.write("Ok")
 
-	if " - " in raz_social or " / " in raz_social:
-		errors.append('Los caracteres "-" y "/" deben transcribirse sin considerar espacios.')
+    def post(self):
+        logging.info("Data obtenida desde Messenger: %s", self.request.body)
+        data = json.loads(self.request.body)
 
-	if raz_social.startswith('(') and raz_social.endswith(')'):
-		errors.append('Se admite el uso de paréntesis cuando estos formen parte de la denominación dentro, al medio o al final, no en los extremos.')
+        if data["object"] == "page":
 
-	if '"' in raz_social:
-		errors.append('En ningún caso serán consideradas las comillas "" que consten al comienzo, en el medio, al final o en los extremos de la razón social.')
+            for entry in data["entry"]:
+                for messaging_event in entry["messaging"]:
+                    sender_id = messaging_event["sender"]["id"]
+                    recipient_id = messaging_event["recipient"]["id"]
 
-	if '=' in raz_social:
-		errors.append('Cuando en la razón social se emplea el signo igual "=", deberá reemplazarse por el guion "-"" sin considerar espacios entre una palabra y la otra.')
+                    if messaging_event.get("message"):
+                        is_admin = False
+                        message = messaging_event['message']
+                        if message.get('is_echo'):
+                            if message.get('app_id'): # bot
+                                continue
+                            else: # admin
+                                # el bot se debe desactivar
+                                is_admin = True
 
-	if usaApostrofeInvalido(terms):
-		errors.append("En el caso de incluir apostrofe (') dentro de una misma palabra, no se considerará espacio alguno. De haberse empleado entre dos palabras distintas, debe considerarse un espacio después del apostrofe.")
+                        message_text = message.get('text', '')
+                        logging.info("Message: %s", message_text)
+                        
+                        # bot handle
+                        if is_admin:
+                            user_id = recipient_id
+                        else:                        
+                            user_id = sender_id
 
-	if presentaInicialesIncorrectas(terms):
-		errors.append("En el caso que contenga letras o iniciales con punto y espacio, o solo espacio, estos espacios no se considerarán, debiendo juntarse las letras o iniciales.")
+                        self.bot.handle(user_id, message_text, is_admin)
 
-	if "α" in raz_social:
-		errors.append("El símbolo Alfa no puede incorporarse. Es correcto si se escribe la palabra ALFA en lugar del símbolo respectivo.")
+                    if messaging_event.get("postback"):
+                        message_text = messaging_event['postback']['payload']
+                        # bot handle                        
+                        self.bot.handle(sender_id, message_text)                        
+                        logging.info("Post-back: %s", message_text)
 
-	if raz_social.endswith('.'):
-		errors.append("En el caso de denominaciones que concluyen con un punto no se considera dicho signo.")
+def send_message(recipient_id, message_text, possible_answers):
 
-	if presentaComasIncorrectasOTildes(terms):
-		errors.append("No se considera la coma en los números ni la tilde en las palabras.")
+    headers = {
+        "Content-Type": "application/json"
+    }
 
-	if len(errors) == 0:
-		print 'Ingresaste una razon social valida: %s' % (raz_social)	
-	else:
-		print 'Ingresaste 1 razon social no valida: %s' % (raz_social)
-		for error in errors:
-			print error
+    # max buttons quantity: 3
+    # max recommended answer length: 20
+    valid_possible_answers = possible_answers is not None and len(possible_answers) <= 3
+    if valid_possible_answers:
+        message = get_postback_buttons_message(message_text, possible_answers)
+    else:
+        message = {"text": message_text}
 
-# A & B INGENIEROS S.A. (CORRECTO)
-# A&B INGENIEROS S.A. 	(INCORRECTO)
-def faltanEspaciosAlCostadoDeEspeciales(terms):
-	for term in terms:
-		if len(term)>1 and ("&" in term or "+" in term or "$" in term):
-			return True
+    raw_data = {
+        "recipient": {
+            "id": recipient_id
+        },
+        "message": message
+    }
+    data = json.dumps(raw_data)
 
-	return False
+    logging.info("Enviando mensaje a %r: %s", recipient_id, message_text)
 
-# PAPI’S	 (CORRECTO)   Pos: 4 - Tam: 6 - Letras: 1 = 6-4-1
-# D’MAMI	 (CORRECTO)   Pos: 1 - Tam: 6 - Letras: 4 = 6-1-1
-# Juan'  	 (CORRECTO)   Pos: 4 - Tam: 5 - Letras: 0 = 5-4-1
-# Juan'Ramos (INCORRECTO) Letras = Tam - Pos - 1
-# 'Juan 	 (INCORRECTO)
-# 'Ramos 	 (INCORRECTO)
-def usaApostrofeInvalido(terms):
-	# Es incorrecto cuando:
-	# tener más de 1 ' en el mismo término
-	# or
-	# Cant letras que hay antes del '             =0
-	# or
-	# Cant letras que están después del '         >1 and ' pos <> 1
-	for term in terms:
-		ocurrences = term.count("'")
+    r = urlfetch.fetch("https://graph.facebook.com/v2.6/me/messages?access_token=%s" % ACCESS_TOKEN,
+                       method=urlfetch.POST, headers=headers, payload=data)
+    if r.status_code != 200:
+        logging.error("Error %r enviando mensaje: %s", r.status_code, r.content)
 
-		if ocurrences == 0:
-			continue
+def get_postback_buttons_message(message_text, possible_answers):
+    buttons = []
+    for answer in possible_answers:
+        buttons.append({
+            "type": "postback",
+            "title": answer,
+            "payload": answer           
+        })
+    return get_buttons_template(message_text, buttons)
 
-		if ocurrences > 1:
-			return True
+def get_buttons_template(message_text, buttons):
+    return {
+        "attachment": {
+            "type": "template",
+            "payload": {
+                "template_type": "button",
+                "text": message_text,
+                "buttons": buttons
+            }
+        }
+    }
 
-		if term[0] == "'":
-			return True
+# def get_open_graph_template(elements):
+#     return {
+#         "attachment": {
+#             "type": "template",
+#             "payload": {
+#                 "template_type": "open_graph",
+#                 "elements": elements
+#             }
+#         }
+#     }    
 
-		pos = term.find("'")
-		characters = len(term) - pos - 1
-		if characters > 1 and pos != 1:
-			return True
-
-	return False
-
-# D. H. B. 	(Incorrecto)   -> 1 term de 2 car donde el último es 1 pto
-# D.H.B. 	(Correcto)
-# R B C 	(Incorrecto)   -> 1 term de 1 car
-# RBC 		(Correcto)
-def presentaInicialesIncorrectas(terms):
-	for term in terms:
-		if len(term) == 2 and term[1] == '.' or len(term) == 1 and term.isalpha() and term != 'Y':
-			return True
-
-	return False
-
-# LIBRERÍA 2,000 S.R.L.		(INCORRECTO)
-# LIBRERÍA 2000 S.R.L.		(CORRECTO)
-# LEÓN Y RAMIREZ S.R.L.		(INCORRECTO)
-# LEON Y RAMIREZ S.R.L.		(CORRECTO)
-def presentaComasIncorrectasOTildes(terms):
-	for term in terms:
-		if presentaTildes(term) or presentaComasIncorrectas(term):
-			return True
-
-	return False
-
-def presentaTildes(term):
-	# tildes = ['Á', 'É', 'Í', 'Ó', 'Ú', 'á', 'é', 'í', 'ó', 'ú']
-	tildes = [181, 144, 214, 224, 233, 160, 130, 161, 162, 163]
-	iEspecial = tildes[2]
-	# print "Valor de Í => %d - %d" % (ord(iEspecial[0]), ord(iEspecial[1]))
-	for char in term:
-		# print "El caracter %s (%d) se encuentra en tildes? => %r" % (char, ord(char), char in tildes)
-		if ord(char) in tildes:
-			return True
-
-	return False
-
-def presentaComasIncorrectas(term):
-	# saltamos los terms que no deben ser evaluados
-	for char in term:
-		if not char.isdigit() and char != ',':
-			return False
-
-	# es incorrecto porque presenta una coma dentro de un nro
-	if ',' in term:
-		return True
-
-	return False
-
- 
-
-main()
+app = webapp2.WSGIApplication([
+    ('/', MainPage)
+], debug=True)
