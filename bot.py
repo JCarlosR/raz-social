@@ -22,10 +22,11 @@ class Bot(object):
 			self.enviarFb('¡El nombre que deseas registrar es correcto!')
 		else:
 			self.enviarFb('¡El nombre que deseas registrar es incorrecto!')
-			reasons_message = ''
+			# reasons_message = ''
 			for error in errors:
-				reasons_message += ('- ' + error)
-			self.enviarFb(reasons_message)
+				self.enviarFb("- " + error)
+				# reasons_message += ('- ' + error)
+			# self.enviarFb(reasons_message)
 		
 
 		# obtener el historial de eventos/mensajes
@@ -103,7 +104,8 @@ def validarRazSocial(raz_social):
 	if faltanEspaciosAlCostadoDeEspeciales(terms):
 		errors.append('Los caracteres "&", "+" y "$" deben emplearse considerando un espacio entre cada signo.')
 
-	if " - " in raz_social or " / " in raz_social:
+	not_allowed = [" -", "- ", " /", "/ "]
+	if any(expr in raz_social for expr in not_allowed):
 		errors.append('Los caracteres "-" y "/" deben transcribirse sin considerar espacios.')
 
 	if raz_social.startswith('(') and raz_social.endswith(')'):
@@ -119,7 +121,7 @@ def validarRazSocial(raz_social):
 		errors.append("En el caso de incluir apostrofe (') dentro de una misma palabra, no se considerará espacio alguno. De haberse empleado entre dos palabras distintas, debe considerarse un espacio después del apostrofe.")
 
 	if presentaInicialesIncorrectas(terms):
-		errors.append("En el caso que contenga letras o iniciales con punto y espacio, o solo espacio, estos espacios no se considerarán, debiendo juntarse las letras o iniciales.")
+		errors.append("De contener letras o iniciales con punto y espacio, o solo espacio, estos espacios no se considerarán, debiendo juntarse las letras o iniciales. A menos que una Y junte a las iniciales.")
 
 	if "α" in raz_social:
 		errors.append("El símbolo Alfa no puede incorporarse. Es correcto si se escribe la palabra ALFA en lugar del símbolo respectivo.")
@@ -153,6 +155,8 @@ def usaApostrofeInvalido(terms):
 	# or
 	# Cant letras que hay antes del '             =0
 	# or
+	# Son 2 letras y termina en ' (como en D' MAMI)
+	# or
 	# Cant letras que están después del '         >1 and ' pos <> 1
 	for term in terms:
 		ocurrences = term.count("'")
@@ -166,6 +170,9 @@ def usaApostrofeInvalido(terms):
 		if term[0] == "'":
 			return True
 
+		if len(term) == 2 and term[1] == "'":
+			return  True
+
 		pos = term.find("'")
 		characters = len(term) - pos - 1
 		if characters > 1 and pos != 1:
@@ -177,6 +184,7 @@ def usaApostrofeInvalido(terms):
 # D.H.B. 	(Correcto)
 # R B C 	(Incorrecto)   -> 1 term de 1 car
 # RBC 		(Correcto)
+# D Y H (Correcto) -> la Y es una excepción a la regla
 def presentaInicialesIncorrectas(terms):
 	for term in terms:
 		if len(term) == 2 and term[1] == '.' or len(term) == 1 and term.isalpha() and term != 'Y':
