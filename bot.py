@@ -5,97 +5,107 @@ DEFAULT_RESPONSE = u"Disculpa, no entendí. ¿Deseas volver a empezar?"
 DEFAULT_POSSIBLE_ANSWERS = [u"Sí", u"No"]
 
 class Bot(object):
-	def __init__(self, send_callback):
+	def __init__(self, send_callback, users_dao, tree):
 		self.send_callback = send_callback
+		self.users_dao = users_dao
+		self.tree = tree
 
 	def enviarFb(self, text):
 		possible_answers = None
 		self.send_callback(self.user_id, text, possible_answers)
 
-	def handle(self, user_id, user_message, is_admin=False):
-		logging.info("Se invocó el método handle")
-		self.user_id = user_id
-
-		errors = validarRazSocial(user_message)
+	def handleRazSocial(self, user_id, raz_social):
+		errors = validarRazSocial(raz_social)
 
 		if len(errors) == 0:
-			self.enviarFb('¡El nombre que deseas registrar es correcto!')
+			response_text = '¡El nombre que deseas registrar es correcto!'
+			self.enviarFb(response_text)
+			self.users_dao.add_user_event(user_id, 'bot', response_text)
 		else:
-			self.enviarFb('¡El nombre que deseas registrar es incorrecto!')
-			# reasons_message = ''
+			response_text = '¡El nombre que deseas registrar es incorrecto!'
+			self.enviarFb(response_text)
+			self.users_dao.add_user_event(user_id, 'bot', response_text)
 			for error in errors:
 				self.enviarFb("- " + error)
-				# reasons_message += ('- ' + error)
-			# self.enviarFb(reasons_message)
 		
 
+	def handle(self, user_id, user_message):
+		logging.info("Se invocó el método handle")
+		self.user_id = user_id
+	
 		# obtener el historial de eventos/mensajes
-		# self.users_dao.add_user_event(user_id, 'user', user_message)
-		# history = self.users_dao.get_user_events(user_id)
+		self.users_dao.add_user_event(user_id, 'user', user_message)
+		history = self.users_dao.get_user_events(user_id)
+		tree = self.tree
 	
 		# determinar 1 rpta en func al mensaje escrito por el usuario
-		# new_conversation = True
-		# bot_asked_about_restart = False
+		new_conversation = True
+		bot_asked_about_restart = False
+		evaluate_company_name = False
 
-		# for text, author in history:
-		# 	bot_reply = True
+		for text, author in history:
+			bot_reply = True
 		# 	logging.info("text: %s", text)
 		# 	logging.info("author: %s", author)
 
-		# 	if author == 'bot':
-		# 		new_conversation = False
-		# 		bot_asked_about_restart = False
+			if author == 'bot':
+				new_conversation = False
+				bot_asked_about_restart = False
+				evaluate_company_name = False
 
-		# 		if text == DEFAULT_RESPONSE:
-		# 			bot_asked_about_restart = True
-		# 			logging.info("bot_asked_about_restart recibió el valor True")
-		# 		elif 'say' in tree and text == tree['say'] and 'answers' in tree:
-		# 			tree = tree['answers']
+				if text == DEFAULT_RESPONSE:
+					bot_asked_about_restart = True
+				elif text == u"Ingresa tu razón social":
+					evaluate_company_name = True
+				elif 'say' in tree and text == tree['say'] and 'answers' in tree:
+					tree = tree['answers']
 
-		# 	elif author == 'user':
-		# 		if new_conversation:
-		# 			response_text = tree['say']
-		# 			possible_answers = tree['answers'].keys()
-		# 			possible_answers.sort()
-		# 		else:
-		# 			if bot_asked_about_restart:
-		# 				if text == u'Sí':
-		# 					tree = self.tree
-		# 					response_text = tree['say']
-		# 					possible_answers = tree['answers'].keys()
-		# 					possible_answers.sort()
-		# 					self.users_dao.remove_user_events(user_id)
-		# 					break
-		# 				elif text == u'No':
-		# 					bot_reply = False
-		# 					continue
+			elif author == 'user':
+				if new_conversation:
+					response_text = tree['say']
+					possible_answers = tree['answers'].keys()
+					possible_answers.sort()
 
-		# 			key = get_key_if_valid(text, tree)
-		# 			if key is None:
-		# 				response_text = DEFAULT_RESPONSE
-		# 				possible_answers = DEFAULT_POSSIBLE_ANSWERS
+				elif evaluate_company_name:
+					raz_social = text
 
-		# 			else:
-		# 				tree = tree[key]
-		# 				if 'say' in tree:
-		# 					response_text = tree['say']
-		# 				if 'answers' in tree:
-		# 					possible_answers = tree['answers'].keys()
-		# 					possible_answers.sort()
-		# 				else:
-		# 					possible_answers = None
+				else:
+					if bot_asked_about_restart:
+						if text == u'Sí':
+							tree = self.tree
+							response_text = tree['say']
+							possible_answers = tree['answers'].keys()
+							possible_answers.sort()
+							self.users_dao.remove_user_events(user_id)
+							break
+						elif text == u'No':
+							bot_reply = False
+							continue
+
+					key = get_key_if_valid(text, tree)
+					if key is None:
+						response_text = DEFAULT_RESPONSE
+						possible_answers = DEFAULT_POSSIBLE_ANSWERS
+					else:
+						tree = tree[key]
+						if 'say' in tree:
+							response_text = tree['say']
+						if 'answers' in tree:
+							possible_answers = tree['answers'].keys()
+							possible_answers.sort()
+						else:
+							possible_answers = None
 
 		# # logging.info("response_text: %s", response_text)
 		# # logging.info("possible_answers: %r", possible_answers)
-		# if bot_reply:
-		# 	self.send_callback(user_id, response_text, possible_answers)
-		# 	self.users_dao.add_user_event(user_id, 'bot', response_text)
+		if bot_reply:
+			if evaluate_company_name:
+				self.handleRazSocial(user_id, raz_social)
+			else:
+				self.send_callback(user_id, response_text, possible_answers)
+				self.users_dao.add_user_event(user_id, 'bot', response_text)
 
 def validarRazSocial(raz_social):
-	# message = 'Bienvenido'
-	# print(message)
-	# raz_social = raw_input('Ingrese razon social: ')
-
 	# términos del texto ingresado
 	terms = raz_social.split()
 
@@ -170,7 +180,7 @@ def usaApostrofeInvalido(terms):
 		if term[0] == "'":
 			return True
 
-		if len(term) == 2 and term[1] == "'":
+		if len(term) == 2 and term[1] == "'": # D' P'
 			return  True
 
 		pos = term.find("'")
@@ -184,13 +194,36 @@ def usaApostrofeInvalido(terms):
 # D.H.B. 	(Correcto)
 # R B C 	(Incorrecto)   -> 1 term de 1 car
 # RBC 		(Correcto)
-# D Y H     (Correcto) -> la Y es una excepción a la regla
+# D Y H     (Correcto) -> la Y es una excepción a la regla (también &, + y $)
 def presentaInicialesIncorrectas(terms):
-	for term in terms:
+	# buscamos si aparecen los conectores excepción y los excluímos
+	conectoresExcepcion = ['Y', '&', '+', '$']
+	for conector in conectoresExcepcion:
+		terms = saltarConectorExcepcionDeIniciales(terms, conector)
+
+	for term in terms: ## && ||
 		if len(term) == 2 and term[1] == '.' or len(term) == 1 and term.isalpha() and term != 'Y':
 			return True
 
 	return False
+
+def saltarConectorExcepcionDeIniciales(terms, conector):
+	if conector in terms:
+		# índice del conector excepción
+		index = terms.index(conector)
+		# obviar elemento siguiente
+		if index < len(terms)-1:
+			nextTerm = terms[index+1]
+			if len(nextTerm)==1:
+				del terms[index+1]
+		# obviar elemento anterior
+		if index > 0:
+			prevTerm = terms[index-1]
+			if len(prevTerm)==1:
+				del terms[index-1]
+		# importa borrar 1ro el sgte, para no alterar la posición del anterior
+
+	return terms
 
 # LIBRERÍA 2,000 S.R.L.		(INCORRECTO)
 # LIBRERÍA 2000 S.R.L.		(CORRECTO)
@@ -206,7 +239,7 @@ def presentaComasIncorrectasOTildes(terms):
 def presentaTildes(term):
 	tildes = ['Á', 'É', 'Í', 'Ó', 'Ú', 'á', 'é', 'í', 'ó', 'ú']
 	# tildes = [181, 144, 214, 224, 233, 160, 130, 161, 162, 163]
-	iEspecial = tildes[2]
+	# iEspecial = tildes[2]
 	# print "Valor de Í => %d - %d" % (ord(iEspecial[0]), ord(iEspecial[1]))
 	for char in term:
 		# print "El caracter %s (%d) se encuentra en tildes? => %r" % (char, ord(char), char in tildes)
@@ -226,3 +259,10 @@ def presentaComasIncorrectas(term):
 		return True
 
 	return False
+
+def get_key_if_valid(text, dictionary):
+	for key in dictionary:
+		if key.lower() == text.lower():
+			return key
+
+	return None

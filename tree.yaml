@@ -1,0 +1,8 @@
+say: ¡Bienvenido! Por favor selecciona una opción para poder ayudarte.
+answers:
+
+  Recomendaciones:
+    say: https://google.com
+
+  Validar razón social:
+    say: Ingresa tu razón social
